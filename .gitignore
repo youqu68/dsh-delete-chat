@@ -3,3 +3,5 @@ node_modules/
 *.log
 # Personal release checklist, not part of the published package.
 SUBMISSION.md
+# Never commit registry credentials.
+.npmrc
