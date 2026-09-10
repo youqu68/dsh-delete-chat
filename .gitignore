@@ -1,0 +1,5 @@
+node_modules/
+.DS_Store
+*.log
+# Personal release checklist, not part of the published package.
+SUBMISSION.md
