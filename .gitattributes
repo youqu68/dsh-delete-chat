@@ -1,0 +1,2 @@
+# Keep the repository newline-normalized so Windows checkouts match CI and npm.
+* text=auto eol=lf
