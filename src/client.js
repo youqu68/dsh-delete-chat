@@ -1,5 +1,5 @@
 /**
- * dsh-del-chat — browser half.
+ * dsh-delete-chat — browser half.
  *
  * Registers a "会话管理" settings page listing every session, with archive /
  * unarchive / two-step-confirm delete actions. Every mutation crosses to the
@@ -13,11 +13,11 @@ import React from 'react'
 
 export const inject = ['remote']
 
-const PACKAGE = 'dsh-del-chat'
+const PACKAGE = 'dsh-delete-chat'
 const NAMESPACE = 'delChat'
 const SECTION_ID = 'del-chat'
 /** Bumped whenever the stylesheet below changes (the shell keys style tags by it). */
-const CSS_TAG = 'dsh-del-chat/client.css'
+const CSS_TAG = 'dsh-delete-chat/client.css'
 
 const e = React.createElement
 

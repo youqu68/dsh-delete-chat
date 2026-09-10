@@ -1,5 +1,5 @@
 {
-  "name": "dsh-del-chat",
+  "name": "dsh-delete-chat",
   "version": "0.1.0",
   "description": "Session manager for DeepSeek Harness: list, archive, unarchive and permanently delete sessions from a settings page.",
   "type": "module",
@@ -57,7 +57,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/youqu68/dsh-del-chat.git"
+    "url": "git+https://github.com/youqu68/dsh-delete-chat.git"
   },
   "license": "MIT"
 }

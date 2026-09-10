@@ -1,5 +1,5 @@
 /**
- * dsh-del-chat — Host-face Typert manifest.
+ * dsh-delete-chat — Host-face Typert manifest.
  *
  * Structurally identical to a `@deepseek-ai/dsh-typert-generator` artifact:
  * `dsh-typert-loader` imports this module through the package's `./typert`
@@ -41,44 +41,44 @@ const deleteResultSchema = z.object({ path: z.string() })
 
 const listRequest$codec = {
   mode: 'strict',
-  typeSymbol: 'dsh-del-chat#ListRequest',
+  typeSymbol: 'dsh-delete-chat#ListRequest',
   schema: listRequestSchema,
 }
 const list$codec = {
   mode: 'strict',
-  typeSymbol: 'dsh-del-chat#ListResult',
+  typeSymbol: 'dsh-delete-chat#ListResult',
   schema: listResultSchema,
 }
 const sessionRequest$codec = {
   mode: 'strict',
-  typeSymbol: 'dsh-del-chat#SessionRequest',
+  typeSymbol: 'dsh-delete-chat#SessionRequest',
   schema: sessionRequestSchema,
 }
 const archivedIds$codec = {
   mode: 'strict',
-  typeSymbol: 'dsh-del-chat#ArchivedIdsResult',
+  typeSymbol: 'dsh-delete-chat#ArchivedIdsResult',
   schema: archivedIdsResultSchema,
 }
 const inspectDelete$codec = {
   mode: 'strict',
-  typeSymbol: 'dsh-del-chat#InspectDeleteResult',
+  typeSymbol: 'dsh-delete-chat#InspectDeleteResult',
   schema: inspectDeleteResultSchema,
 }
 const delete$codec = {
   mode: 'strict',
-  typeSymbol: 'dsh-del-chat#DeleteResult',
+  typeSymbol: 'dsh-delete-chat#DeleteResult',
   schema: deleteResultSchema,
 }
 
 export const sessionSchemaExport = sessionSchema
 
 export const TYPERT = {
-  package: 'dsh-del-chat',
+  package: 'dsh-delete-chat',
   face: 'host',
   schemas: [],
   invocations: [
     {
-      id: 'dsh-del-chat#delChat/list',
+      id: 'dsh-delete-chat#delChat/list',
       service: 'delChat',
       namespace: 'delChat',
       method: 'list',
@@ -87,7 +87,7 @@ export const TYPERT = {
       result: list$codec,
     },
     {
-      id: 'dsh-del-chat#delChat/archive',
+      id: 'dsh-delete-chat#delChat/archive',
       service: 'delChat',
       namespace: 'delChat',
       method: 'archive',
@@ -96,7 +96,7 @@ export const TYPERT = {
       result: archivedIds$codec,
     },
     {
-      id: 'dsh-del-chat#delChat/unarchive',
+      id: 'dsh-delete-chat#delChat/unarchive',
       service: 'delChat',
       namespace: 'delChat',
       method: 'unarchive',
@@ -105,7 +105,7 @@ export const TYPERT = {
       result: archivedIds$codec,
     },
     {
-      id: 'dsh-del-chat#delChat/inspectDelete',
+      id: 'dsh-delete-chat#delChat/inspectDelete',
       service: 'delChat',
       namespace: 'delChat',
       method: 'inspectDelete',
@@ -114,7 +114,7 @@ export const TYPERT = {
       result: inspectDelete$codec,
     },
     {
-      id: 'dsh-del-chat#delChat/deleteSession',
+      id: 'dsh-delete-chat#delChat/deleteSession',
       service: 'delChat',
       namespace: 'delChat',
       method: 'deleteSession',

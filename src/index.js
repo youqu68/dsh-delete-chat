@@ -1,5 +1,5 @@
 /**
- * dsh-del-chat — host half.
+ * dsh-delete-chat — host half.
  *
  * A session manager exposing four Remote methods to the browser half:
  *   list()                    → every session with title / cwd / liveness / archive flag

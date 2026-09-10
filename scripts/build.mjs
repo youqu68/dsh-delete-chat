@@ -1,5 +1,5 @@
 /**
- * Build dsh-del-chat into its published `lib/` artifacts.
+ * Build dsh-delete-chat into its published `lib/` artifacts.
  *
  *   lib/index.js        host plugin (ESM, bundled, zod-free)
  *   lib/typert.host.js  hand-written Host-face Typert manifest (copied verbatim)
@@ -69,4 +69,4 @@ ${bundled}
 
 await writeFile(join(outDir, 'client.js'), envelope, 'utf8')
 
-console.log(`[dsh-del-chat] built lib/index.js, lib/typert.host.js, lib/client.js`)
+console.log(`[dsh-delete-chat] built lib/index.js, lib/typert.host.js, lib/client.js`)

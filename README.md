@@ -1,4 +1,4 @@
-# dsh-del-chat
+# dsh-delete-chat
 
 A DeepSeek Harness session manager: a settings page that lists every session and lets you archive (hide), unarchive (restore), and permanently delete sessions.
 
@@ -14,7 +14,7 @@ A DeepSeek Harness session manager: a settings page that lists every session and
 ## Install / 安装
 
 ```sh
-dsh plugin --profile web add dsh-del-chat
+dsh plugin --profile web add dsh-delete-chat
 ```
 
 The package declares `dsh.bundle.patch`, so the command installs it **and** reconciles it into `dsh.profile.bundles` — no profile file editing. Restart `dsh web` to mount it.
@@ -41,7 +41,7 @@ One dual-face package:
 | Host plugin | `lib/index.js` | `apply(ctx)` provides the `delChat` service |
 | Host manifest | `lib/typert.host.js` | the `./typert` Typert contribution that exposes `delChat` over the gateway |
 | Browser plugin | `lib/client.js` | the `settings.section` page, mounted through `exports["./client"]` |
-| Mount | `cordis.patch.yml` | one `insert` row: `del-chat → dsh-del-chat` |
+| Mount | `cordis.patch.yml` | one `insert` row: `del-chat → dsh-delete-chat` |
 
 The browser half reaches the host through `remote.delChat.*`. The host half imports no `@deepseek-ai/*` runtime package — it reads the host process's own services with `ctx.get(...)` and binds itself to the gateway with a hand-written `typertRemote` binding, so no code-generation step is needed to build this plugin.
 

@@ -45,7 +45,7 @@ const requireShim = (id) => {
 await import(pathToFileURL(join(root, 'lib', 'client.js')).href)
 
 ok(registration !== undefined, 'client: __ModuleLoader__.load was never called')
-ok(registration?.id === 'dsh-del-chat', `client: registration id = ${JSON.stringify(registration?.id)}`)
+ok(registration?.id === 'dsh-delete-chat', `client: registration id = ${JSON.stringify(registration?.id)}`)
 ok(typeof registration?.factory === 'function', 'client: factory is not a function')
 
 const exports = registration.factory(requireShim)
@@ -90,11 +90,11 @@ await exports.apply({
 
 ok(mounted.length === 1, `client: expected exactly one $mount, got ${mounted.length}`)
 const contribution = mounted[0]
-ok(contribution?.package === 'dsh-del-chat', `client: contribution package = ${contribution?.package}`)
+ok(contribution?.package === 'dsh-delete-chat', `client: contribution package = ${contribution?.package}`)
 
 const descriptorIds = (contribution?.descriptors ?? []).map((d) => d.id)
 for (const m of METHODS) {
-  ok(descriptorIds.includes(`dsh-del-chat#delChat/${m}`), `client: missing descriptor for ${m}`)
+  ok(descriptorIds.includes(`dsh-delete-chat#delChat/${m}`), `client: missing descriptor for ${m}`)
 }
 for (const d of contribution?.descriptors ?? []) {
   ok(d.namespace === 'delChat', `client ${d.id}: namespace`)

@@ -52,12 +52,12 @@ ok(
 // ── Typert manifest ──────────────────────────────────────────────────────────
 const { TYPERT } = await import(at('typert.host.js'))
 ok(TYPERT !== undefined, 'typert: no TYPERT export')
-ok(TYPERT?.package === 'dsh-del-chat', `typert: package=${TYPERT?.package}`)
+ok(TYPERT?.package === 'dsh-delete-chat', `typert: package=${TYPERT?.package}`)
 ok(TYPERT?.face === 'host', `typert: face=${TYPERT?.face}`)
 ok(Array.isArray(TYPERT?.invocations), 'typert: invocations is not an array')
 
 const ids = (TYPERT?.invocations ?? []).map((i) => i.id)
-for (const m of METHODS) ok(ids.includes(`dsh-del-chat#delChat/${m}`), `typert: missing invocation for ${m}`)
+for (const m of METHODS) ok(ids.includes(`dsh-delete-chat#delChat/${m}`), `typert: missing invocation for ${m}`)
 
 for (const inv of TYPERT?.invocations ?? []) {
   ok(inv.service === 'delChat', `typert ${inv.id}: service=${inv.service}`)
