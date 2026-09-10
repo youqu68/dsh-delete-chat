@@ -1,0 +1,10 @@
+# dsh-del-chat bundle patch: one dual-face row over the web profile.
+#
+# The row name resolves from the profile's own node_modules, where
+# `dsh plugin --profile web add dsh-del-chat` installed this package. The same
+# package carries the host half (the `delChat` Remote service) and the browser
+# half (exports["./client"], discovered through the dsh.client declaration), so
+# a single insert is the whole mount.
+- insert:
+    - id: del-chat
+      name: dsh-del-chat
