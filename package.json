@@ -1,0 +1,63 @@
+{
+  "name": "dsh-del-chat",
+  "version": "0.1.0",
+  "description": "Session manager for DeepSeek Harness: list, archive, unarchive and permanently delete sessions from a settings page.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./typert": {
+      "default": "./lib/typert.host.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node test/validate-host.mjs && node test/validate-client.mjs",
+    "prepublishOnly": "node scripts/build.mjs"
+  },
+  "dependencies": {
+    "zod": "^4.5.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.9"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "session",
+    "archive",
+    "delete"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/youqu68/dsh-del-chat.git"
+  },
+  "license": "MIT"
+}
