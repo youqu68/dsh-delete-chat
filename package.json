@@ -1,6 +1,6 @@
 {
   "name": "dsh-delete-chat",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Session manager for DeepSeek Harness: list, archive, unarchive and permanently delete sessions from a settings page.",
   "type": "module",
   "main": "lib/index.js",

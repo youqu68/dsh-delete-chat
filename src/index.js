@@ -35,6 +35,64 @@ function parentDir(p) {
 }
 
 /**
+ * Unwrap the `title` projection value. It is the title string itself; the
+ * `{ title }` shape is tolerated as well.
+ * @returns the title, or null when absent or blank.
+ */
+function titleFromValue(value) {
+  if (typeof value === 'string' && value.length > 0) return value
+  if (value !== null && typeof value === 'object' && typeof value.title === 'string' && value.title.length > 0) {
+    return value.title
+  }
+  return null
+}
+
+/**
+ * Resolve one session's title WITHOUT folding its event log.
+ *
+ * `sessionQuery.readTitleSnapshots` folds the COMPLETE log of every requested
+ * session. Measured on a real corpus (43.5 MB compressed / 322 MB decompressed
+ * / 1.26M events) that is ~15 s per call, which freezes the settings page. The
+ * title is already a registered projection, so it is read from the live
+ * projection table for attached sessions and from the persisted projection
+ * cache for every other session — both are metadata reads.
+ * @returns the title, or null when no cheap source has one yet.
+ */
+function resolveTitle(ctx, header, liveSession) {
+  if (liveSession !== undefined) {
+    const projections = ctx.get('sessionProjections')
+    if (projections !== undefined) {
+      try {
+        const title = titleFromValue(projections.snapshot(liveSession)?.values?.title)
+        if (title !== null) return title
+      } catch {
+        // Fall through to the in-memory title service.
+      }
+    }
+    const sessionTitle = ctx.get('sessionTitle')
+    if (sessionTitle !== undefined) {
+      try {
+        const title = titleFromValue(sessionTitle.get(liveSession))
+        if (title !== null) return title
+      } catch {
+        // A session without a folded title renders untitled.
+      }
+    }
+    return null
+  }
+
+  const cache = ctx.get('sessionProjectionCache')
+  if (cache !== undefined) {
+    try {
+      return titleFromValue(cache.cachedSnapshot(header)?.values?.title)
+    } catch {
+      // An unreadable cache entry renders untitled.
+    }
+  }
+  return null
+}
+
+/**
  * Resolve one session's persistence artifact and whether it may be deleted.
  * @returns `{ deletable, reason, path, dir }` — `reason`/`path`/`dir` are null
  *   (never undefined) so the Remote result stays JSON-safe.
@@ -92,31 +150,21 @@ function createService(ctx) {
 
       const records = await query.listSessions()
 
-      const titles = new Map()
-      try {
-        const ids = records.map((r) => String(r.header.id))
-        const results = await query.readTitleSnapshots(ids)
-        for (const item of results) {
-          if (item.status === 'fulfilled' && item.value && item.value.title && item.value.title.title) {
-            titles.set(String(item.sessionId), String(item.value.title.title))
-          }
-        }
-      } catch {
-        // Titles are decoration; a fold failure must not fail the listing.
-      }
-
       const liveSet = new Set()
+      const liveById = new Map()
       if (sessions !== undefined) {
-        for (const s of sessions.list()) liveSet.add(String(s.id))
+        for (const s of sessions.list()) {
+          liveSet.add(String(s.id))
+          liveById.set(String(s.id), s)
+        }
       }
 
       const out = records.map((r) => {
         const id = String(r.header.id)
-        const title = titles.get(id)
         const cwd = r.header.cwd
         return {
           id,
-          title: typeof title === 'string' && title.length > 0 ? title : null,
+          title: resolveTitle(ctx, r.header, liveById.get(id)),
           cwd: typeof cwd === 'string' && cwd.length > 0 ? cwd : null,
           createdAt: Number(r.header.createdAt) || 0,
           live: liveSet.has(id) || r.live === true,
