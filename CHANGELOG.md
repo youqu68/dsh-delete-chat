@@ -3,6 +3,31 @@
 All notable changes to this plugin are documented here. Versions follow the npm
 releases of `dsh-delete-chat`.
 
+## 0.1.2 — 2026-09-13
+
+### Changed
+
+- **A deleted session no longer leaves its directory behind.** `deleteSession`
+  removed the session's persistence artifact but left the now-empty
+  `sessions/<project>/<sessionId>/` directory in place. The removal command now
+  also drops that directory.
+
+  The directory removal is deliberately **non-recursive**: it succeeds only when
+  the directory is empty, so a session-owned artifact written there by a future
+  version survives instead of being swept away.
+
+  Artifact removal itself is unchanged — an exact `-LiteralPath` removal that
+  fails loudly, with the live-session, non-file-backend and unexpected-filename
+  guards, the two-step confirmation, and the accounting/archive cleanup intact.
+
+### Not deleted (by design)
+
+- Per-session rows in the persisted **projection cache**
+  (`$DSH_HOME/storages/session_projcache.json`, about 5.6 KB per session) and any
+  per-session data owned by other plugins. The harness itself never prunes these
+  on any deletion path, and the rows are inert: reads validate them against the
+  log's stored identity before accepting them.
+
 ## 0.1.1 — 2026-09-12
 
 ### Fixed

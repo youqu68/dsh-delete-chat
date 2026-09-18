@@ -230,8 +230,17 @@ function createService(ctx) {
       const shell = ctx.get('shell')
       if (shell === undefined) throw new Error('shell service unavailable')
 
+      // Remove the transcript, then the session-owned directory that held it.
+      // The directory removal is deliberately NON-recursive: it succeeds only
+      // when the directory is empty, so a session-owned artifact a future
+      // version starts writing there is left in place instead of swept away.
       const quoted = info.path.replace(/'/g, "''")
-      const spec = shell.resolve({ command: `Remove-Item -LiteralPath '${quoted}' -Force -ErrorAction Stop` })
+      const quotedDir = String(info.dir).replace(/'/g, "''")
+      const command = [
+        `Remove-Item -LiteralPath '${quoted}' -Force -ErrorAction Stop`,
+        `if (Test-Path -LiteralPath '${quotedDir}') { Remove-Item -LiteralPath '${quotedDir}' -Force -ErrorAction SilentlyContinue }`,
+      ].join('\n')
+      const spec = shell.resolve({ command })
       const result = await shell.run(spec)
 
       if (result.sandbox && result.sandbox.denied) {
