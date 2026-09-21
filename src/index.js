@@ -163,6 +163,13 @@ function resolveTitle(ctx, header, liveSession) {
 
 /**
  * Resolve one session's persistence artifact and whether it may be deleted.
+ *
+ * `sessionPersistence.list()` returns `SessionPersistenceSnapshot` objects —
+ * `{ header, revision, eventCount?, sizeBytes? }` — so the session identity is
+ * NESTED under `.header`; the snapshot itself has no `id`. Matching on
+ * `snapshot.id` misses every stored session and made every delete refuse with
+ * "会话不存在".
+ *
  * @returns `{ deletable, reason, path, dir }` — `reason`/`path`/`dir` are null
  *   (never undefined) so the Remote result stays JSON-safe.
  */
@@ -177,23 +184,46 @@ async function inspectDeletable(ctx, sessionId) {
     return { deletable: false, reason: '存储服务不可用', path: null, dir: null }
   }
 
-  let header
+  let snapshot
+  let listError = null
   try {
-    const list = await persistence.list()
-    header = list.find((h) => String(h.id) === sessionId)
-  } catch {
-    header = undefined
+    const snapshots = await persistence.list()
+    snapshot = snapshots.find((s) => s !== null && typeof s === 'object' && String(s.header?.id) === sessionId)
+  } catch (error) {
+    listError = error
+    snapshot = undefined
   }
-  if (header === undefined) {
-    return { deletable: false, reason: '会话不存在', path: null, dir: null }
+  if (snapshot === undefined) {
+    if (listError !== null) {
+      return {
+        deletable: false,
+        reason: `读取会话存储失败：${String((listError && listError.message) || listError)}`,
+        path: null,
+        dir: null,
+      }
+    }
+    return { deletable: false, reason: '会话不存在或没有可删除的日志文件', path: null, dir: null }
   }
 
-  if (persistence.supportsRawArtifacts !== true) {
+  // A created-but-unmaterialized session is visible to this process from
+  // `create` until its first flush, but owns no artifact yet.
+  if (typeof persistence.hasPendingSession === 'function' && persistence.hasPendingSession(sessionId) === true) {
+    return { deletable: false, reason: '该会话尚未写入磁盘日志，没有可删除的文件', path: null, dir: null }
+  }
+
+  // `locate` is the backend's own refusal-diagnostics hook and the only source
+  // of the on-disk path; the public persistence seam exposes no path lookup.
+  if (typeof persistence.locate !== 'function') {
     return { deletable: false, reason: '当前存储后端不暴露单会话文件，无法安全删除', path: null, dir: null }
   }
 
-  const loc = persistence.locate(header)
-  if (loc === undefined || loc.kind !== 'jsonl') {
+  let loc
+  try {
+    loc = persistence.locate(snapshot.header)
+  } catch {
+    loc = undefined
+  }
+  if (loc === undefined || loc === null || loc.kind !== 'jsonl' || typeof loc.path !== 'string') {
     return { deletable: false, reason: '无法解析会话文件路径', path: null, dir: null }
   }
 

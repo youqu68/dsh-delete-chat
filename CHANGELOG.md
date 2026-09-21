@@ -7,6 +7,25 @@ releases of `dsh-delete-chat`.
 
 ### Fixed
 
+- **Deleting a session works again.** `inspectDeletable` read
+  `sessionPersistence.list()` and matched `snapshot.id`, but that method
+  resolves `SessionPersistenceSnapshot` objects — `{ header, revision,
+  eventCount?, sizeBytes? }` — whose identity is **nested under `.header`**.
+  Nothing ever matched, so every delete refused with **“会话不存在”** before
+  `deleteSession` was reached. The lookup now matches `snapshot.header.id`.
+
+  Two inventions went with it: the persistence seam has no
+  `supportsRawArtifacts` property (the capability probe now checks the backend's
+  real `locate()` hook, which is the only source of the on-disk path), and a
+  created-but-unmaterialized session is now refused through the backend's own
+  `hasPendingSession()` instead of being mistaken for a missing one. A
+  persistence listing that throws is reported as a storage error rather than as
+  an absent session.
+
+  The functional test's persistence mock returned bare headers plus the invented
+  `supportsRawArtifacts`, which is exactly why this defect passed every check;
+  the mock now returns real snapshots, and three guards pin the contract.
+
 - **Session titles are visible again in the settings page.** 0.1.1 moved the
   title source from a log fold (which cost ~15 s per listing on a real corpus)
   to the persisted projection cache, but only called
