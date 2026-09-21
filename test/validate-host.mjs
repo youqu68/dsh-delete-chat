@@ -75,6 +75,78 @@ for (const inv of TYPERT?.invocations ?? []) {
   }
 }
 
+// ── inspectDelete contract ───────────────────────────────────────────────────
+// `sessionPersistence.list()` resolves `SessionPersistenceSnapshot` objects —
+// `{ header, revision, eventCount?, sizeBytes? }` — so the session identity is
+// NESTED under `.header` and a match on a top-level `id` finds nothing and
+// silently refuses every delete. These checks pin the real seam contract.
+const HEADER = { id: 'session-contract-0001', createdAt: 1726000000000, cwd: 'D:\\proj' }
+const ARTIFACT = `C:\\sess\\${HEADER.id}\\session.jsonl.zstd`
+const realSnapshotBackend = {
+  hasPendingSession: () => false,
+  async list() {
+    return [{ header: HEADER, revision: 0, sizeBytes: 4096 }]
+  },
+  locate: (meta) => ({ kind: 'jsonl', path: `C:\\sess\\${meta.id}\\session.jsonl.zstd` }),
+}
+const mkService = (persistence, sessions = { get: () => undefined }) => {
+  const bag = new Map()
+  host.apply({
+    get: (name) => {
+      if (name === 'sessionPersistence') return persistence
+      if (name === 'sessions') return sessions
+      return undefined
+    },
+    provide: (key, value) => {
+      bag.set(key, value)
+      return () => {}
+    },
+    effect: () => () => {},
+    on: () => () => {},
+  })
+  return bag.get('delChat')
+}
+
+const stored = await mkService(realSnapshotBackend).inspectDelete({ sessionId: HEADER.id })
+ok(stored.deletable === true, `inspectDelete: a stored session must be deletable (reason=${JSON.stringify(stored.reason)})`)
+ok(stored.path === ARTIFACT, `inspectDelete: path=${JSON.stringify(stored.path)}`)
+ok(stored.dir === `C:\\sess\\${HEADER.id}`, `inspectDelete: dir=${JSON.stringify(stored.dir)}`)
+
+const bareHeaders = await mkService({
+  hasPendingSession: () => false,
+  async list() {
+    return [HEADER]
+  },
+  locate: realSnapshotBackend.locate,
+}).inspectDelete({ sessionId: HEADER.id })
+ok(bareHeaders.deletable === false, 'inspectDelete: a backend returning bare headers must be refused, not mis-read')
+
+const liveSession = await mkService(realSnapshotBackend, {
+  get: (id) => (id === HEADER.id ? { id } : undefined),
+}).inspectDelete({ sessionId: HEADER.id })
+ok(liveSession.deletable === false, 'inspectDelete: a live session must be refused')
+
+const unmaterialized = await mkService({
+  hasPendingSession: () => true,
+  async list() {
+    return [{ header: HEADER, revision: 0 }]
+  },
+  locate: realSnapshotBackend.locate,
+}).inspectDelete({ sessionId: HEADER.id })
+ok(unmaterialized.deletable === false, 'inspectDelete: an unmaterialized session owns no artifact')
+
+const listFailure = await mkService({
+  hasPendingSession: () => false,
+  async list() {
+    throw new Error('listing-boom')
+  },
+  locate: realSnapshotBackend.locate,
+}).inspectDelete({ sessionId: HEADER.id })
+ok(
+  listFailure.deletable === false && /listing-boom/.test(String(listFailure.reason)),
+  `inspectDelete: a listing failure must surface as a storage error (reason=${JSON.stringify(listFailure.reason)})`,
+)
+
 // ── report ───────────────────────────────────────────────────────────────────
 console.log('host exports      :', Object.keys(host).join(', '))
 console.log('provided services :', [...provided.keys()].join(', '))
@@ -86,6 +158,7 @@ console.log(
 )
 console.log('typert invocations:', ids.length)
 for (const id of ids) console.log('  -', id)
+console.log('inspectDelete     : snapshot.header lookup, live/unmaterialized/listing-failure refusals')
 
 if (problems.length === 0) {
   console.log('\nhost: PASS')
