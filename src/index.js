@@ -35,6 +35,20 @@ function parentDir(p) {
 }
 
 /**
+ * The canonical session-log basenames the JSONL backend writes, mirrored from
+ * `sessionFormatLogFilename` + `compressionSuffix`: format generation 0 is
+ * `session.jsonl`, every later generation carries a lowercase `vN` component
+ * before the suffix (`session.v3.jsonl`), and `.zstd` is appended when the
+ * configured encoding is Zstandard.
+ *
+ * The `vN` form is the common case — the shipped format generation is **v3**, so
+ * on a real profile the artifacts are named `session.v3.jsonl.zstd`. A prefix
+ * test against `session.jsonl` accepts only the legacy generation and rejects
+ * every current one, which is what produced "产物文件名异常，已拒绝删除".
+ */
+const SESSION_LOG_BASENAME = /^session(?:\.v[1-9][0-9]*)?\.jsonl(?:\.zstd)?$/
+
+/**
  * Unwrap the `title` projection value. It is the title string itself; the
  * `{ title }` shape is tolerated as well.
  * @returns the title, or null when absent or blank.
@@ -228,7 +242,7 @@ async function inspectDeletable(ctx, sessionId) {
   }
 
   const base = String(loc.path).split(/[\\/]/).pop() ?? ''
-  if (!base.startsWith('session.jsonl')) {
+  if (!SESSION_LOG_BASENAME.test(base)) {
     return { deletable: false, reason: '产物文件名异常，已拒绝删除', path: null, dir: null }
   }
 

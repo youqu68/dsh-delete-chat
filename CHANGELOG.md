@@ -26,6 +26,19 @@ releases of `dsh-delete-chat`.
   `supportsRawArtifacts`, which is exactly why this defect passed every check;
   the mock now returns real snapshots, and three guards pin the contract.
 
+- **Deleting a *current*-format session works.** The artifact-name guard accepted
+  only names starting with `session.jsonl`, but generation 0 is the only
+  generation named that way: every later generation carries a `.vN` component, and
+  the shipped format generation is **v3** — so a current artifact is
+  `session.v3.jsonl.zstd` and was refused with **“产物文件名异常，已拒绝删除”**.
+
+  The guard now matches the backend's canonical names — `session.jsonl` or
+  `session.vN.jsonl` (lowercase, no leading zero), each with the optional `.zstd`
+  suffix — and still refuses anything else, including `session.v0.jsonl`,
+  migration temporaries, and a plain `session.log`. Measured on a real profile:
+  34 artifacts on disk, 14 of them the `v3` form the old prefix test rejected, and
+  0 legitimate names refused by the new guard.
+
 - **Deleting a session no longer depends on where the harness was launched.**
   The artifact and its directory live in the session store, which is outside the
   session workspace, and a plugin's `shell.resolve()` inherits the *deployment's*

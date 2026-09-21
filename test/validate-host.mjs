@@ -113,6 +113,26 @@ ok(stored.deletable === true, `inspectDelete: a stored session must be deletable
 ok(stored.path === ARTIFACT, `inspectDelete: path=${JSON.stringify(stored.path)}`)
 ok(stored.dir === `C:\\sess\\${HEADER.id}`, `inspectDelete: dir=${JSON.stringify(stored.dir)}`)
 
+// Every canonical generation the backend can write must be accepted: the shipped
+// format generation is v3, so artifacts on a real profile are named
+// `session.v3.jsonl.zstd`, and a prefix test against `session.jsonl` rejects
+// exactly those with "产物文件名异常，已拒绝删除".
+const withArtifactName = (name) => ({
+  hasPendingSession: () => false,
+  async list() {
+    return [{ header: HEADER, revision: 0, sizeBytes: 4096 }]
+  },
+  locate: () => ({ kind: 'jsonl', path: `C:\\sess\\${HEADER.id}\\${name}` }),
+})
+for (const name of ['session.jsonl', 'session.jsonl.zstd', 'session.v3.jsonl', 'session.v3.jsonl.zstd', 'session.v12.jsonl.zstd']) {
+  const info = await mkService(withArtifactName(name)).inspectDelete({ sessionId: HEADER.id })
+  ok(info.deletable === true, `inspectDelete: canonical artifact "${name}" must be deletable (reason=${JSON.stringify(info.reason)})`)
+}
+for (const name of ['session.log', 'session.v0.jsonl', 'session.v3.jsonl.bak', 'session.migration.abc.jsonl.zstd.tmp', 'elsewhere.jsonl']) {
+  const info = await mkService(withArtifactName(name)).inspectDelete({ sessionId: HEADER.id })
+  ok(info.deletable === false, `inspectDelete: non-canonical artifact "${name}" must be refused`)
+}
+
 const bareHeaders = await mkService({
   hasPendingSession: () => false,
   async list() {
