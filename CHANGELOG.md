@@ -5,6 +5,22 @@ releases of `dsh-delete-chat`.
 
 ## 0.1.2 — 2026-09-13
 
+### Fixed
+
+- **Session titles are visible again in the settings page.** 0.1.1 moved the
+  title source from a log fold to the persisted projection cache, but called
+  `sessionProjectionCache.cachedSnapshot(meta)` with only the header.
+  `cachedSnapshot` is a three-argument call whose lifecycle identity includes
+  the fork-inherited prefix length; with that argument missing the identity
+  never matched, the lookup returned `undefined`, and **every row rendered
+  untitled**.
+
+  The call now passes the inherited event count (0 for an unseeded session — the
+  ordinary case; read from the cache's own stored identity for a seeded one) and
+  requests the `title` key, falling back to `cachedPredecessorTitle`, the
+  cache's documented zero-I/O listing hint. A functional test pins the call
+  shape so the same regression cannot return silently.
+
 ### Changed
 
 - **A deleted session no longer leaves its directory behind.** `deleteSession`

@@ -48,6 +48,29 @@ function titleFromValue(value) {
 }
 
 /**
+ * The exact fork-inherited prefix length the projection cache binds a record to.
+ *
+ * `cachedSnapshot`/`cachedPredecessorTitle` match on a lifecycle identity that
+ * includes this length, and passing anything else simply never matches. The
+ * header exposes only `isSeeded` — the length is Session state — so an unseeded
+ * session passes 0, and a seeded one is read from the cache's OWN stored
+ * identity row (a read-only peek) so the lookup can still match. Passing 0 for
+ * a seeded session would be safe but silent: the identity check rejects it.
+ * @returns the inherited event count to pass to the cache.
+ */
+function inheritedCountFor(ctx, header) {
+  if (header.isSeeded !== true) return 0
+  try {
+    const row = ctx.get('storageDomain')?.get('session_projcache')?.table('sessions')?.get(String(header.id))
+    const stored = row?.identity?.inheritedEventCount
+    if (typeof stored === 'number' && Number.isSafeInteger(stored) && stored >= 0) return stored
+  } catch {
+    // No peek available; the cache lookup below simply will not match.
+  }
+  return 0
+}
+
+/**
  * Resolve one session's title WITHOUT folding its event log.
  *
  * `sessionQuery.readTitleSnapshots` folds the COMPLETE log of every requested
@@ -81,15 +104,23 @@ function resolveTitle(ctx, header, liveSession) {
     return null
   }
 
+  // Persisted session: the projection cache. `cachedSnapshot` needs the exact
+  // lifecycle identity (including the inherited prefix length); the predecessor
+  // title is the cache's own documented zero-I/O listing hint.
   const cache = ctx.get('sessionProjectionCache')
-  if (cache !== undefined) {
-    try {
-      return titleFromValue(cache.cachedSnapshot(header)?.values?.title)
-    } catch {
-      // An unreadable cache entry renders untitled.
-    }
+  if (cache === undefined) return null
+  const inherited = inheritedCountFor(ctx, header)
+  try {
+    const title = titleFromValue(cache.cachedSnapshot(header, inherited, ['title'])?.values?.title)
+    if (title !== null) return title
+  } catch {
+    // Fall through to the predecessor hint.
   }
-  return null
+  try {
+    return titleFromValue(cache.cachedPredecessorTitle(header, inherited)?.values?.title)
+  } catch {
+    return null
+  }
 }
 
 /**
