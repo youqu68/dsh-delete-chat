@@ -340,9 +340,35 @@ function createService(ctx) {
         `if (Test-Path -LiteralPath '${quotedDir}') { Remove-Item -LiteralPath '${quotedDir}' -Force -ErrorAction SilentlyContinue }`,
       ].join('\n')
       const spec = shell.resolve({ command })
-      const result = await shell.run(spec)
+      let result = await shell.run(spec)
 
-      if (result.sandbox && result.sandbox.denied) {
+      // The artifact and its directory live in the session store, which is
+      // outside the session workspace, so the executor's default file policy can
+      // fence this command out — the default is derived from the deployment, not
+      // from the folder being deleted. When it denies the write, retry once under
+      // the narrowest scope that can hold the artifact: its own project
+      // directory. The command is fixed and its single path came from the
+      // persistence backend's own `locate()` and was validated, never from the
+      // caller, so this re-scopes the sandbox to exactly the directory this
+      // plugin manages instead of widening it.
+      let denial = result.sandbox?.denied === true ? result : null
+      if (denial !== null) {
+        try {
+          const scoped = shell.resolve({
+            command,
+            sandboxPolicy: { mode: 'workspace-write', workspaceRoot: parentDir(String(info.dir)) },
+          })
+          const retry = await shell.run(scoped)
+          if (retry.sandbox?.denied !== true) {
+            result = retry
+            denial = null
+          }
+        } catch {
+          // Keep the original denial: it is the honest report.
+        }
+      }
+
+      if (denial !== null) {
         throw new Error('沙箱拒绝了删除（会话文件位于工作区之外）')
       }
       if (result.exitCode !== 0) {

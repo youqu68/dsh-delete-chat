@@ -89,12 +89,13 @@ const realSnapshotBackend = {
   },
   locate: (meta) => ({ kind: 'jsonl', path: `C:\\sess\\${meta.id}\\session.jsonl.zstd` }),
 }
-const mkService = (persistence, sessions = { get: () => undefined }) => {
+const mkService = (persistence, sessions = { get: () => undefined }, shell = undefined) => {
   const bag = new Map()
   host.apply({
     get: (name) => {
       if (name === 'sessionPersistence') return persistence
       if (name === 'sessions') return sessions
+      if (name === 'shell') return shell
       return undefined
     },
     provide: (key, value) => {
@@ -146,6 +147,34 @@ ok(
   listFailure.deletable === false && /listing-boom/.test(String(listFailure.reason)),
   `inspectDelete: a listing failure must surface as a storage error (reason=${JSON.stringify(listFailure.reason)})`,
 )
+
+// The artifact lives in the session store, outside the session workspace, and the
+// executor's default file policy is derived from the deployment rather than from
+// the folder being deleted. A denial must therefore be retried once under the
+// narrowest scope that can hold the artifact: its own project directory.
+const retryShell = {
+  specs: [],
+  runs: 0,
+  resolve(request) {
+    const spec = { command: request.command, sandboxPolicy: request.sandboxPolicy }
+    this.specs.push(spec)
+    return spec
+  },
+  async run() {
+    this.runs += 1
+    return this.runs === 1
+      ? { exitCode: null, sandbox: { denied: true } }
+      : { exitCode: 0, sandbox: { denied: false } }
+  },
+}
+const deleted = await mkService(realSnapshotBackend, undefined, retryShell).deleteSession({ sessionId: HEADER.id })
+ok(retryShell.runs === 2, `deleteSession: a denied delete must be retried once (ran ${retryShell.runs} times)`)
+ok(retryShell.specs[1]?.sandboxPolicy?.mode === 'workspace-write', 'deleteSession: the retry must carry an explicit workspace-write policy')
+ok(
+  retryShell.specs[1]?.sandboxPolicy?.workspaceRoot === 'C:\\sess',
+  `deleteSession: the retry root must be the artifact's project directory (got ${JSON.stringify(retryShell.specs[1]?.sandboxPolicy?.workspaceRoot)})`,
+)
+ok(deleted.path === ARTIFACT, `deleteSession: reported path=${JSON.stringify(deleted.path)}`)
 
 // ── report ───────────────────────────────────────────────────────────────────
 console.log('host exports      :', Object.keys(host).join(', '))

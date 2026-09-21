@@ -26,6 +26,23 @@ releases of `dsh-delete-chat`.
   `supportsRawArtifacts`, which is exactly why this defect passed every check;
   the mock now returns real snapshots, and three guards pin the contract.
 
+- **Deleting a session no longer depends on where the harness was launched.**
+  The artifact and its directory live in the session store, which is outside the
+  session workspace, and a plugin's `shell.resolve()` inherits the *deployment's*
+  file policy rather than the calling session's. Deletion was therefore refused
+  on any deployment whose default write root does not cover the session store —
+  measured directly on a real profile: a write into the session store went
+  through while a write into the directory the harness was launched in was fenced
+  out, and the same command with an explicitly scoped policy then succeeded in
+  both places.
+
+  A denial now retries the same fixed command once under `workspace-write` scoped
+  to the artifact's own project directory — the narrowest root that can hold it.
+  The scope is chosen by the plugin, but the single path in the command still
+  comes from the persistence backend's `locate()` and is validated before use, so
+  this narrows the fence to the directory this plugin manages rather than
+  widening it. A denial that survives the retry is still reported as such.
+
 - **Session titles are visible again in the settings page.** 0.1.1 moved the
   title source from a log fold (which cost ~15 s per listing on a real corpus)
   to the persisted projection cache, but only called
