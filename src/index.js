@@ -71,6 +71,32 @@ function inheritedCountFor(ctx, header) {
 }
 
 /**
+ * Read one session's title straight from its persisted projection-cache row.
+ *
+ * The cache table is keyed by session id, and the row carries the lifecycle
+ * identity it was written under. Accepting the row only when `createdAt` and
+ * `cwd` equal the listed header's keeps the guarantee that validation exists
+ * for — a reused id or a swapped persistence root cannot serve an unrelated
+ * title — without also requiring the `formatVersion`/`isSeeded`/inherited-length
+ * fields that rows written by an older format never had.
+ * @returns the title, or null when the row is absent, unrelated, or untitled.
+ */
+function titleFromCacheRow(ctx, header) {
+  try {
+    const row = ctx.get('storageDomain')?.get('session_projcache')?.table('sessions')?.get(String(header.id))
+    if (row === undefined) return null
+    const identity = row.identity
+    if (identity === undefined) return null
+    if (identity.createdAt !== header.createdAt) return null
+    if (identity.cwd !== header.cwd) return null
+    return titleFromValue(row.rows?.title?.val)
+  } catch {
+    // An unreadable row renders untitled rather than failing the listing.
+    return null
+  }
+}
+
+/**
  * Resolve one session's title WITHOUT folding its event log.
  *
  * `sessionQuery.readTitleSnapshots` folds the COMPLETE log of every requested
@@ -98,15 +124,27 @@ function resolveTitle(ctx, header, liveSession) {
         const title = titleFromValue(sessionTitle.get(liveSession))
         if (title !== null) return title
       } catch {
-        // A session without a folded title renders untitled.
+        // A live title that is not folded yet falls through to the checkpoint.
       }
     }
-    return null
+    // Fall through: an attached session whose title has not been folded yet can
+    // still have one in its persisted checkpoint.
   }
 
-  // Persisted session: the projection cache. `cachedSnapshot` needs the exact
-  // lifecycle identity (including the inherited prefix length); the predecessor
-  // title is the cache's own documented zero-I/O listing hint.
+  // Persisted session: the persisted projection cache.
+  //
+  // Read the row BY ID first and accept it when the format-independent
+  // lifecycle facts match. The cache's own validated reads
+  // (`cachedSnapshot` / `cachedPredecessorTitle`) additionally compare
+  // `formatVersion`, `isSeeded` and the inherited prefix length; rows written by
+  // an older format carry only `{createdAt, cwd}`, so those reads reject every
+  // such row and the whole page rendered untitled. `createdAt` + `cwd` are the
+  // facts that identity validation exists to pin (they already distinguish one
+  // lifecycle from a reused id or a swapped persistence root), and they match
+  // every real row on disk.
+  const rowTitle = titleFromCacheRow(ctx, header)
+  if (rowTitle !== null) return rowTitle
+
   const cache = ctx.get('sessionProjectionCache')
   if (cache === undefined) return null
   const inherited = inheritedCountFor(ctx, header)

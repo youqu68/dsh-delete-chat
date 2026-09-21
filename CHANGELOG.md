@@ -8,18 +8,27 @@ releases of `dsh-delete-chat`.
 ### Fixed
 
 - **Session titles are visible again in the settings page.** 0.1.1 moved the
-  title source from a log fold to the persisted projection cache, but called
-  `sessionProjectionCache.cachedSnapshot(meta)` with only the header.
-  `cachedSnapshot` is a three-argument call whose lifecycle identity includes
-  the fork-inherited prefix length; with that argument missing the identity
-  never matched, the lookup returned `undefined`, and **every row rendered
-  untitled**.
+  title source from a log fold (which cost ~15 s per listing on a real corpus)
+  to the persisted projection cache, but only called
+  `sessionProjectionCache.cachedSnapshot(meta)` — a **three**-argument call whose
+  lifecycle identity includes the fork-inherited prefix length. With that
+  argument missing the identity never matched, the lookup returned `undefined`,
+  and **every row rendered untitled**.
 
-  The call now passes the inherited event count (0 for an unseeded session — the
-  ordinary case; read from the cache's own stored identity for a seeded one) and
-  requests the `title` key, falling back to `cachedPredecessorTitle`, the
-  cache's documented zero-I/O listing hint. A functional test pins the call
-  shape so the same regression cannot return silently.
+  The fix reads the cache **row by session id** and accepts it when the
+  format-independent lifecycle facts match the listed header (`createdAt` +
+  `cwd`) — the facts identity validation exists to pin, since they already
+  distinguish one lifecycle from a reused id or a swapped persistence root.
+  Rows written by an older format carry only `{createdAt, cwd}`, so the cache's
+  own `cachedSnapshot` / `cachedPredecessorTitle` (which additionally compare
+  `formatVersion`, `isSeeded` and the inherited length) reject every one of
+  them; those service reads remain as the fallback for rows in the current
+  format, and an attached session whose title is not folded yet now falls
+  through to its checkpoint instead of rendering untitled.
+
+  A functional test pins all three: the row path resolves a title, a **stale
+  identity is rejected** rather than served, and a rejected row falls through to
+  the service reads. `list()` still folds **zero** session logs.
 
 ### Changed
 
