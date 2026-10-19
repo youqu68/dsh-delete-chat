@@ -11,7 +11,13 @@
  */
 import React from 'react'
 
-export const inject = ['remote']
+/**
+ * Wait for the services this module touches: `remote` mounts the namespace and
+ * `slots` owns the settings page registration. Declaring them here (instead of
+ * reading them and silently returning) keeps the page mounting even when this
+ * module activates before the host shell has installed its slot registry.
+ */
+export const inject = ['remote', 'slots']
 
 const PACKAGE = 'dsh-delete-chat'
 const NAMESPACE = 'delChat'
@@ -22,23 +28,23 @@ const CSS_TAG = 'dsh-delete-chat/client.css'
 const e = React.createElement
 
 /* ── client-side codecs ───────────────────────────────────────────────────────
- * The client half of a Typert contribution only needs `{ parse }`; validation
- * happens again host-side against the zod codecs in ./typert. */
+ * The client half of a Typert contribution only needs a codec that passes the
+ * contribution validation; real validation happens host-side against the zod
+ * schemas in ./typert. The codec contract differs between harness lines: 0.1.x
+ * validates `codec.schema.parse`, 0.2.x validates a `create()` factory, so both
+ * spellings carry the same passthrough schema. */
 
-function codecOf(parse) {
-  return { parse }
-}
+const passthroughSchema = { parse: (value) => value }
 
-const anyCodec = codecOf((value) => value)
 /**
- * The `{ mode, typeSymbol, schema }` shape every generated descriptor uses —
- * for parameters as well as results. The client half only ever calls
- * `schema.parse`, so a duck-typed codec is enough here.
+ * The `{ mode, typeSymbol, ... }` shape every generated descriptor uses — for
+ * parameters as well as results.
  */
 const codec = (typeName) => ({
   mode: 'strict',
   typeSymbol: `${PACKAGE}#${typeName}`,
-  schema: anyCodec,
+  schema: passthroughSchema,
+  create: () => passthroughSchema,
 })
 
 const REMOTE_CONTRIBUTION = {
@@ -59,8 +65,8 @@ const REMOTE_CONTRIBUTION = {
       namespace: NAMESPACE,
       method: 'archive',
       invocation: { kind: 'direct' },
-      parameters: [{ name: 'request', wire: 'request', source: 'json', codec: codec('SessionRequest') }],
-      result: codec('ArchivedIdsResult'),
+      parameters: [{ name: 'request', wire: 'request', source: 'json', codec: codec('ArchiveRequest') }],
+      result: codec('ArchiveResult'),
     },
     {
       id: `${PACKAGE}#${NAMESPACE}/unarchive`,
@@ -105,6 +111,7 @@ const CSS = [
   '.dc-row-sub{opacity:.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}',
   '.dc-empty{opacity:.5;padding:4px 0}',
   '.dc-live{color:var(--dsw-alias-state-info-primary,#4aa3e0);font-size:11px;margin-top:2px}',
+  '.dc-note{color:var(--dsw-alias-state-warn-primary,#e0a060);font-size:11px;margin-top:2px}',
   '.dc-warn{color:var(--dsw-alias-state-warn-primary,#e0a060);font-size:11px;margin-top:4px;word-break:break-all}',
   '.dc-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}',
   '.dc-btn{font:inherit;font-size:12px;color:inherit;background:var(--dsw-alias-button-elevated-fill,transparent);border:1px solid var(--dsw-alias-border-l1,rgba(128,128,128,.4));border-radius:7px;padding:4px 10px;cursor:pointer;white-space:nowrap}',
@@ -147,6 +154,24 @@ function formatTime(ms) {
   }
 }
 
+/** Human-readable name for one activity family returned by a refused archive. */
+const ACTIVITY_LABELS = {
+  turn: '正在运行的对话回合',
+  job: '正在运行的后台任务',
+  subagent: '正在运行的子代理',
+  schedule: '待触发的定时任务',
+}
+
+function describeActivity(activity) {
+  const names = []
+  for (const entry of activity ?? []) {
+    const kind = entry && typeof entry.kind === 'string' ? entry.kind : 'activity'
+    names.push(ACTIVITY_LABELS[kind] ?? kind)
+  }
+  const unique = [...new Set(names)]
+  return unique.length > 0 ? unique.join('、') : '运行中的工作'
+}
+
 function SessionManagerPage(props) {
   const api = props.api
   const [view, setView] = React.useState({
@@ -154,8 +179,13 @@ function SessionManagerPage(props) {
     sessions: [],
     error: null,
     busyId: null,
+    // two-step delete confirmation
     confirmId: null,
     confirmPath: null,
+    confirmFiles: null,
+    // 0.2.x "stop and archive" confirmation
+    stopId: null,
+    stopActivity: null,
   })
 
   const load = async () => {
@@ -169,6 +199,9 @@ function SessionManagerPage(props) {
         busyId: null,
         confirmId: null,
         confirmPath: null,
+        confirmFiles: null,
+        stopId: null,
+        stopActivity: null,
       })
     } catch (error) {
       setView({
@@ -178,6 +211,9 @@ function SessionManagerPage(props) {
         busyId: null,
         confirmId: null,
         confirmPath: null,
+        confirmFiles: null,
+        stopId: null,
+        stopActivity: null,
       })
     }
   }
@@ -189,10 +225,53 @@ function SessionManagerPage(props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const clearConfirmations = (s) => ({
+    ...s,
+    busyId: null,
+    confirmId: null,
+    confirmPath: null,
+    confirmFiles: null,
+    stopId: null,
+    stopActivity: null,
+  })
+
   const toggleArchive = async (sessionId, archived) => {
+    if (archived) {
+      setView((s) => ({ ...s, busyId: sessionId, error: null, stopId: null, stopActivity: null }))
+      try {
+        await call(api, 'unarchive', [{ sessionId }])
+        await load()
+      } catch (error) {
+        setView((s) => ({ ...s, busyId: null, error: String((error && error.message) || error) }))
+      }
+      return
+    }
+
+    setView((s) => ({ ...s, busyId: sessionId, error: null, stopId: null, stopActivity: null }))
+    try {
+      const value = await call(api, 'archive', [{ sessionId }])
+      if (value && value.needsStop === true) {
+        // 0.2.x refuses to archive a session with running work; ask before
+        // stopping it, exactly like the sidebar's own archive flow.
+        setView((s) => ({
+          ...s,
+          busyId: null,
+          error: null,
+          stopId: sessionId,
+          stopActivity: Array.isArray(value.activity) ? value.activity : [],
+        }))
+        return
+      }
+      await load()
+    } catch (error) {
+      setView((s) => ({ ...s, busyId: null, error: String((error && error.message) || error) }))
+    }
+  }
+
+  const stopAndArchive = async (sessionId) => {
     setView((s) => ({ ...s, busyId: sessionId, error: null }))
     try {
-      await call(api, archived ? 'unarchive' : 'archive', [{ sessionId }])
+      await call(api, 'archive', [{ sessionId, stopActivity: true }])
       await load()
     } catch (error) {
       setView((s) => ({ ...s, busyId: null, error: String((error && error.message) || error) }))
@@ -200,17 +279,26 @@ function SessionManagerPage(props) {
   }
 
   const askDelete = async (sessionId) => {
-    setView((s) => ({ ...s, busyId: sessionId, error: null, confirmPath: null }))
+    setView((s) => ({ ...s, busyId: sessionId, error: null, confirmPath: null, confirmFiles: null }))
     try {
       const info = await call(api, 'inspectDelete', [{ sessionId }])
       if (info && info.deletable === true) {
-        setView((s) => ({ ...s, busyId: null, confirmId: sessionId, confirmPath: info.path }))
+        setView((s) => ({
+          ...s,
+          busyId: null,
+          stopId: null,
+          stopActivity: null,
+          confirmId: sessionId,
+          confirmPath: info.path,
+          confirmFiles: Array.isArray(info.files) ? info.files : [],
+        }))
       } else {
         setView((s) => ({
           ...s,
           busyId: null,
           confirmId: null,
           confirmPath: null,
+          confirmFiles: null,
           error: (info && info.reason) || '无法删除',
         }))
       }
@@ -220,6 +308,7 @@ function SessionManagerPage(props) {
         busyId: null,
         confirmId: null,
         confirmPath: null,
+        confirmFiles: null,
         error: String((error && error.message) || error),
       }))
     }
@@ -236,6 +325,7 @@ function SessionManagerPage(props) {
         busyId: null,
         confirmId: null,
         confirmPath: null,
+        confirmFiles: null,
         error: String((error && error.message) || error),
       }))
     }
@@ -243,7 +333,10 @@ function SessionManagerPage(props) {
 
   const renderRow = (session) => {
     const confirming = view.confirmId === session.id
+    const awaitingStop = view.stopId === session.id
     const busy = view.busyId === session.id
+    const migration = session.formatStatus === 'migration-required'
+
     return e(
       'div',
       { key: session.id, className: 'dc-row' },
@@ -257,47 +350,80 @@ function SessionManagerPage(props) {
           (session.cwd || '(无工作目录)') + ' · ' + formatTime(session.createdAt),
         ),
         session.live ? e('div', { className: 'dc-live' }, '● 运行中（不可删除）') : null,
+        migration ? e('div', { className: 'dc-note' }, '该会话的日志是旧格式，删除会移除磁盘上的旧版日志') : null,
+        awaitingStop
+          ? e(
+              'div',
+              { className: 'dc-warn' },
+              '该会话仍有' + describeActivity(view.stopActivity) + '。归档会先停止这些工作，确定继续？',
+            )
+          : null,
         confirming
           ? e(
               'div',
               { className: 'dc-warn' },
-              '将永久删除该会话日志文件，不可撤销：' + (view.confirmPath || ''),
+              '将永久删除该会话的日志文件，不可撤销：' + (view.confirmPath || '') +
+                (view.confirmFiles && view.confirmFiles.length > 1
+                  ? '（共 ' + view.confirmFiles.length + ' 个文件：' + view.confirmFiles.join('、') + '）'
+                  : ''),
             )
           : null,
       ),
       e(
         'div',
         { className: 'dc-actions' },
-        e(
-          'button',
-          {
-            className: 'dc-btn' + (session.archived ? ' dc-btn-restore' : ''),
-            disabled: busy,
-            onClick: () => toggleArchive(session.id, session.archived),
-          },
-          session.archived ? '取消归档' : '归档',
-        ),
-        confirming
-          ? e(
-              'button',
-              { className: 'dc-btn dc-btn-danger', disabled: busy, onClick: () => doDelete(session.id) },
-              '确认删除',
-            )
+        awaitingStop
+          ? [
+              e(
+                'button',
+                { key: 'stop', className: 'dc-btn dc-btn-danger', disabled: busy, onClick: () => stopAndArchive(session.id) },
+                '停止并归档',
+              ),
+              e(
+                'button',
+                {
+                  key: 'cancel-stop',
+                  className: 'dc-btn',
+                  onClick: () => setView((s) => ({ ...s, stopId: null, stopActivity: null })),
+                },
+                '取消',
+              ),
+            ]
+          : null,
+        awaitingStop
+          ? null
           : e(
               'button',
               {
-                className: 'dc-btn dc-btn-delete',
-                disabled: session.live || busy,
-                onClick: () => askDelete(session.id),
+                className: 'dc-btn' + (session.archived ? ' dc-btn-restore' : ''),
+                disabled: busy,
+                onClick: () => toggleArchive(session.id, session.archived),
               },
-              '删除',
+              session.archived ? '取消归档' : '归档',
             ),
+        awaitingStop
+          ? null
+          : confirming
+            ? e(
+                'button',
+                { className: 'dc-btn dc-btn-danger', disabled: busy, onClick: () => doDelete(session.id) },
+                '确认删除',
+              )
+            : e(
+                'button',
+                {
+                  className: 'dc-btn dc-btn-delete',
+                  disabled: session.live || busy,
+                  onClick: () => askDelete(session.id),
+                },
+                '删除',
+              ),
         confirming
           ? e(
               'button',
               {
                 className: 'dc-btn',
-                onClick: () => setView((s) => ({ ...s, confirmId: null, confirmPath: null })),
+                onClick: () => setView((s) => clearConfirmations(s)),
               },
               '取消',
             )
@@ -334,7 +460,7 @@ function SessionManagerPage(props) {
 }
 
 export async function apply(ctx) {
-  const remote = ctx.remote
+  const remote = ctx.get('remote')
   if (remote === undefined || typeof remote.$mount !== 'function') return
 
   const unmount = await remote.$mount(REMOTE_CONTRIBUTION)

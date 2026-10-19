@@ -3,7 +3,115 @@
 All notable changes to this plugin are documented here. Versions follow the npm
 releases of `dsh-delete-chat`.
 
+## 0.2.0 — 2026-10-19
+
+First release adapted to the **official** DeepSeek Harness (`@deepseek-ai/dsh`
+0.2.x, verified against 0.2.1-rc.2) while remaining compatible with the 0.1.x
+line. It also carries the 0.1.2 fixes below, which had never been published.
+
+### Fixed — the plugin did not load at all on 0.2.x
+
+- **The hand-written Typert codecs were rejected, so neither half mounted.**
+  The codec contract changed between harness lines: 0.1.x validates
+  `codec.schema` (a zod v4 schema) and decodes with `schema.parse()`, while
+  0.2.x validates a `codec.create()` factory and decodes with
+  `create().parse()`. Every codec in `./typert` and in the client contribution
+  now carries **both** spellings pointing at the same schema, so one artifact
+  passes either loader. Without this, `dsh-typert-loader` threw
+  `... has no create() factory` while registering the manifest (no settings
+  page, no callable `remote.delChat.*`) and `remote.$mount()` threw in the
+  browser.
+
+- **Deletion no longer depends on `ctx.shell`.** The shell seam lost
+  `run(spec)` on 0.2.x (it is now `execute(spec)` + `execution.result()`), so
+  every delete threw `shell.run is not a function`. The artifact is now
+  removed with `node:fs` directly from the trusted host plugin: a plugin is
+  in-process code, the path still comes from the persistence backend's own
+  `locate()` and is validated, and this also fixes two older defects — the
+  hard-coded PowerShell command never worked on macOS/Linux, and the shell call
+  inherited the deployment's file policy (so the session store could be fenced
+  out on a deployment whose default write root was elsewhere, which is what
+  the removed 0.1.2 "retry under `workspace-write`" hack worked around).
+
+- **Session titles resolve on 0.2.x again.** `cachedSnapshot` lost its
+  `inheritedEventCount` argument (`(meta, keys?)`) and `cachedPredecessorTitle`
+  lost it too (`(meta)`), so the old three-argument call passed a number as
+  `keys` and the cheap title fast path died for cold sessions. Both arities are
+  tried, keyed off the running service's arity, and the persisted-cache row
+  read (the format-independent `createdAt` + `cwd` identity check) is still
+  tried first.
+
+### Fixed — archive / unarchive semantics on 0.2.x
+
+- **Archiving a session with running work is a decision, not an error.**
+  0.2.x `archiveSession()` refuses an active session with
+  `WorkspaceActiveSessionError` (carrying the activity families) unless the
+  caller passes `{ stopActivity: true }`, exactly like the native sidebar.
+  `archive` now returns `{ needsStop: true, activity }` as data, the page shows
+  what is still running and offers **停止并归档**, and the confirmed retry
+  forwards `stopActivity: true`. A session with no running work archives in
+  one call as before, and the 0.1.x line (which has no activity gate) is
+  unchanged.
+
+- **Unarchive uses the real registry operation.** 0.2.x adds
+  `workspaceRegistry.unarchiveSession(id)`; the plugin previously hand-wrote
+  the `workspace` storage-domain state. The registry operation is used when
+  present and the old durable-domain write remains only as the 0.1.x fallback.
+
+### Fixed — deletion removes the whole session, not just one file
+
+- **Every canonical log generation is removed.** `locate()` always spells the
+  *current* generation path (`session.v4.jsonl.zstd` on 0.2.x) without touching
+  the filesystem, and a store upgraded from 0.1.x usually keeps older
+  generations: a measured real store had 48 artifacts across 32 session
+  directories, **22 directories with no v4 file at all** and **10 holding two
+  generations**. The old code therefore either failed with ENOENT after
+  reporting the session deletable, or deleted one generation and let the
+  highest surviving one *resurrect the session on the next read*. The session
+  directory is now enumerated and every `session[.vN].jsonl[.zstd]` file in it
+  is removed, so format generations v0–v4 (and future ones) are all covered.
+
+- **The POSIX `session.lock` lease file is cleared.** It is session-owned
+  debris once the log is gone, and leaving it kept the non-recursive directory
+  removal from succeeding. It is removed only when it is the sole remaining
+  entry.
+
+- **The session directory is still removed non-recursively.** Unknown files
+  written by another component are never swept away; the page reports when the
+  directory was kept because it was non-empty.
+
+### Added
+
+- A per-row **“旧格式”** note for sessions the backend reports as
+  `migration-required`, so deleting a pre-migration log is not a surprise.
+- `test/validate-compat.mjs`: validates the built Typert manifest against every
+  installed harness generation's real `validateTypertManifest` (0.1.5 and
+  0.2.1 on this machine) and decodes the archive request/result through the
+  schema each line would use. `npm test` runs it; it skips cleanly when no
+  harness is installed. Override locations with `DSH_HARNESS_DIRS`.
+- The host validation suite now exercises the delete path against **real files
+  in a temp directory** (canonical names, coexisting generations, leftovers,
+  directory-name guard) and the whole archive/unarchive matrix, instead of
+  mocks that could hide contract drift.
+
+### Changed
+
+- `export const inject = ['remote', 'slots']` in the browser half: `slots` is
+  provided by `dsh-client-ui-renderer`, and reading it without declaring it let
+  the page silently never register if the module activated early.
+
+### Notes
+
+- 0.2.0 is the first published release that contains the 0.1.2 fixes; npm
+  `latest` was still 0.1.1.
+- Verified against the official `@deepseek-ai/dsh@0.2.1-rc.2` and the
+  0.1.5-rc.2 runtime. The official 0.2.x harness itself requires Node ≥ 24.2;
+  this package's own engines floor stays at Node 20 for the 0.1.x line.
+
 ## 0.1.2 — 2026-09-13
+
+> Never published on npm; superseded by 0.2.0, whose delete path replaces the
+> shell-based removal described below.
 
 ### Fixed
 
